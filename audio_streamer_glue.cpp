@@ -351,7 +351,7 @@ private:
             idx = m_playFile++;
         }
 
-        char filePath[SWITCH_MAX_FILENAME];
+        char filePath[256];
         switch_snprintf(filePath, sizeof(filePath), "%s%s%s_%d.tmp%s",
             SWITCH_GLOBAL_dirs.temp_dir, SWITCH_PATH_SEPARATOR,
             m_sessionId.c_str(), idx, ext);
@@ -594,7 +594,7 @@ private:
             idx = m_playFile++;
         }
 
-        char filePath[SWITCH_MAX_FILENAME];
+        char filePath[256];
         switch_snprintf(filePath, sizeof(filePath), "%s%s%s_%d.tmp%s",
             SWITCH_GLOBAL_dirs.temp_dir, SWITCH_PATH_SEPARATOR,
             m_sessionId.c_str(), idx, fileType.c_str());
