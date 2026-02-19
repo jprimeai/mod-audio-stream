@@ -125,7 +125,7 @@ static switch_status_t start_capture(switch_core_session_t *session,
     }
 
     switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session),
-        SWITCH_LOG_DEBUG, "adding media bug\n");
+        SWITCH_LOG_DEBUG, "adding media bug ==============================================\n");
 
     if ((status = switch_core_media_bug_add(
              session, MY_BUG_NAME, NULL,
