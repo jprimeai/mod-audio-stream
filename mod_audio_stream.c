@@ -68,11 +68,10 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
             break;
 
         case SWITCH_ABC_TYPE_READ:
+        case SWITCH_ABC_TYPE_WRITE:
             if (tech_pvt->close_requested)
                 return SWITCH_FALSE;
-            return stream_frame(bug);
-
-        case SWITCH_ABC_TYPE_WRITE:
+            return stream_frame(bug);        
         default:
             break;
     }
