@@ -92,13 +92,15 @@ public:
         const char *tls_cafile,
         const char *tls_keyfile,
         const char *tls_certfile,
-        bool tls_disable_hostname_validation)
+        bool tls_disable_hostname_validation,
+        int connection_timeout = 5)
     {
         std::shared_ptr<AudioStreamer> sp(new AudioStreamer(
             uuid, wsUri, callback, deflate, heart_beat,
             suppressLog, sampling, extra_headers,
             tls_cafile, tls_keyfile, tls_certfile,
-            tls_disable_hostname_validation));
+            tls_disable_hostname_validation,
+            connection_timeout));
 
         sp->bindCallbacks(std::weak_ptr<AudioStreamer>(sp));
         sp->client.connect();
@@ -211,7 +213,8 @@ private:
         const char *tls_cafile,
         const char *tls_keyfile,
         const char *tls_certfile,
-        bool tls_disable_hostname_validation)
+        bool tls_disable_hostname_validation,
+        int connection_timeout = 5)
         : m_sessionId(uuid),
           m_notify(callback),
           m_suppress_log(suppressLog),
@@ -242,6 +245,11 @@ private:
         if (tls_certfile) tls.certFile = tls_certfile;
         tls.disableHostnameValidation = tls_disable_hostname_validation;
         client.setTLSOptions(tls);
+
+        /* The libwsc default is 1 second which is too tight for remote TLS
+         * handshakes.  We default to 5 s and let the caller override via
+         * STREAM_CONNECTION_TIMEOUT. */
+        client.setConnectionTimeout(connection_timeout > 0 ? connection_timeout : 5);
 
         if (heart_beat)  client.setPingInterval(heart_beat);
         if (deflate)     client.enableCompression(false);
@@ -687,7 +695,8 @@ namespace {
         const char             *tls_cafile,
         const char             *tls_keyfile,
         const char             *tls_certfile,
-        bool                    tls_disable_hostname_validation)
+        bool                    tls_disable_hostname_validation,
+        int                     connection_timeout)
     {
         int err;
         switch_memory_pool_t *pool = switch_core_session_get_pool(session);
@@ -715,7 +724,8 @@ namespace {
             tech_pvt->sessionId, wsUri, responseHandler,
             deflate, heart_beat, suppressLog, desiredSampling,
             extra_headers, tls_cafile, tls_keyfile,
-            tls_certfile, tls_disable_hostname_validation);
+            tls_certfile, tls_disable_hostname_validation,
+            connection_timeout);
 
         tech_pvt->pAudioStreamer = new std::shared_ptr<AudioStreamer>(sp);
 
@@ -1006,10 +1016,11 @@ switch_status_t stream_session_init(
     char                  *metadata,
     void                 **ppUserData)
 {
-    int  deflate    = 0;
-    int  heart_beat = 0;
-    bool suppressLog = false;
-    int  rtp_packets = 1;
+    int  deflate            = 0;
+    int  heart_beat         = 0;
+    int  connection_timeout = 5;   /* default: 5 s (libwsc default is 1 s) */
+    bool suppressLog        = false;
+    int  rtp_packets        = 1;
     const char *buffer_size  = nullptr;
     const char *extra_headers = nullptr;
     const char *tls_cafile   = nullptr;
@@ -1039,6 +1050,15 @@ switch_status_t stream_session_init(
         long value = strtol(heartBeat, &endptr, 10);
         if (*endptr == '\0' && value > 0 && value <= INT_MAX)
             heart_beat = static_cast<int>(value);
+    }
+
+    const char *connTimeout =
+        switch_channel_get_variable(channel, "STREAM_CONNECTION_TIMEOUT");
+    if (connTimeout) {
+        char *endptr;
+        long value = strtol(connTimeout, &endptr, 10);
+        if (*endptr == '\0' && value > 0 && value <= 120)
+            connection_timeout = static_cast<int>(value);
     }
 
     if ((buffer_size =
@@ -1071,7 +1091,8 @@ switch_status_t stream_session_init(
                          metadata, responseHandler,
                          deflate, heart_beat, suppressLog, rtp_packets,
                          extra_headers, tls_cafile, tls_keyfile, tls_certfile,
-                         tls_disable_hostname_validation) !=
+                         tls_disable_hostname_validation,
+                         connection_timeout) !=
         SWITCH_STATUS_SUCCESS) {
         destroy_tech_pvt(tech_pvt);
         return SWITCH_STATUS_FALSE;
@@ -1232,7 +1253,19 @@ switch_bool_t stream_frame(switch_media_bug_t *bug) {
 
     switch_mutex_unlock(tech_pvt->mutex);
 
-    if (!streamer || !streamer->isConnected()) return SWITCH_TRUE;
+    if (!streamer->isConnected()) {
+        /* WebSocket not yet connected or already dropped.
+         * Log once so callers can diagnose, then return collected buffers to
+         * the pool so they are available for future frames. */
+        if (!pending_send.empty()) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG,
+                "(%s) stream_frame: %zu chunk(s) ready but WS not connected – discarding\n",
+                tech_pvt->sessionId, pending_send.size());
+            for (auto &chunk : pending_send)
+                pool.release(std::move(chunk));
+        }
+        return SWITCH_TRUE;
+    }
 
     for (auto &chunk : pending_send) {
         if (!chunk.empty())

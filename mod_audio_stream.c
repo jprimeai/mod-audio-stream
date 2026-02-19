@@ -50,8 +50,7 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
     switch_core_session_t *session =
         switch_core_media_bug_get_session(bug);
     private_t *tech_pvt = (private_t *)user_data;
-    switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session),
-        SWITCH_LOG_DEBUG, "Got SWITCH_ABC_TYPE: %d\n", type);
+
     switch (type) {
 
         case SWITCH_ABC_TYPE_INIT:
@@ -59,7 +58,7 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
 
         case SWITCH_ABC_TYPE_CLOSE:
             switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session),
-                SWITCH_LOG_INFO, "Got SWITCH_ABC_TYPE_CLOSE\n");
+                SWITCH_LOG_INFO, "mod_audio_stream: bug closing\n");
             {
                 /* Distinguish normal channel hangup from a module-initiated
                  * close (close_requested) so we avoid double-remove. */
@@ -69,12 +68,25 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
             break;
 
         case SWITCH_ABC_TYPE_READ:
-        case SWITCH_ABC_TYPE_WRITE:
-            switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session),
-                SWITCH_LOG_DEBUG, "Got SWITCH_ABC_TYPE_WRITE\n");
+            /* Inbound audio from the remote party (or mixed read+write audio
+             * when SMBF_WRITE_STREAM is also set).  This is the primary path
+             * for bridged calls and any application that reads the channel. */
             if (tech_pvt->close_requested)
                 return SWITCH_FALSE;
-            return stream_frame(bug);        
+            return stream_frame(bug);
+
+        case SWITCH_ABC_TYPE_WRITE:
+            /* Outbound audio being written to the remote party.  For mixed
+             * mode bugs FreeSWITCH places the write data in the same linear
+             * read buffer, so stream_frame / switch_core_media_bug_read still
+             * works here.  This path handles parked/held channels where the
+             * park application never calls switch_core_session_read_frame and
+             * therefore SWITCH_ABC_TYPE_READ never fires.
+             * SMBF_NO_PAUSE ensures callbacks are not suppressed by CF_HOLD. */
+            if (tech_pvt->close_requested)
+                return SWITCH_FALSE;
+            return stream_frame(bug);
+
         default:
             break;
     }
