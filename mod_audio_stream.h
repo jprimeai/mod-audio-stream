@@ -45,6 +45,12 @@ struct private_data {
     char                     initialMetadata[MAX_METADATA_LEN];
     switch_buffer_t         *sbuffer;
     int                      rtp_packets;
+
+    /* ── Audio-tap diagnostic counters (approximate, no lock) ── */
+    uint32_t                 dbg_read_cbs;    /* READ  bug callbacks fired      */
+    uint32_t                 dbg_write_cbs;   /* WRITE bug callbacks fired      */
+    uint32_t                 dbg_data_frames; /* stream_frame calls with data   */
+    uint32_t                 dbg_frame_total; /* total stream_frame calls       */
 };
 
 typedef struct private_data private_t;

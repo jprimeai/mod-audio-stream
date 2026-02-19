@@ -1253,6 +1253,57 @@ switch_bool_t stream_frame(switch_media_bug_t *bug) {
 
     switch_mutex_unlock(tech_pvt->mutex);
 
+    /* ── Tap diagnostics: log every 250 frames (~5 s at 20 ms/frame) ── */
+    {
+        const bool has_data = !pending_send.empty();
+        if (has_data)
+            tech_pvt->dbg_data_frames++;
+
+        uint32_t total = ++tech_pvt->dbg_frame_total;
+
+        if (total % 250 == 0) {
+            const bool connected = streamer->isConnected();
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO,
+                "(%s) Audio tap [last ~5s]: "
+                "read_cbs=%u  write_cbs=%u  "
+                "frames_with_data=%u/%u  "
+                "ws_connected=%s\n",
+                tech_pvt->sessionId,
+                tech_pvt->dbg_read_cbs,
+                tech_pvt->dbg_write_cbs,
+                tech_pvt->dbg_data_frames,
+                total,
+                connected ? "YES" : "NO");
+
+            if (!connected)
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING,
+                    "(%s) Audio tap: WebSocket NOT connected – "
+                    "audio is being collected but cannot be forwarded. "
+                    "Check STREAM_CONNECTION_TIMEOUT and WS server.\n",
+                    tech_pvt->sessionId);
+
+            if (tech_pvt->dbg_read_cbs == 0 && tech_pvt->dbg_write_cbs == 0)
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING,
+                    "(%s) Audio tap: no READ or WRITE bug callbacks in last ~5s – "
+                    "media bug may be paused or channel has no media.\n",
+                    tech_pvt->sessionId);
+            else if (tech_pvt->dbg_data_frames == 0)
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING,
+                    "(%s) Audio tap: callbacks firing (%u read + %u write) but "
+                    "switch_core_media_bug_read returned no data – "
+                    "likely WebRTC DTX silence or ICE path broken (check for "
+                    "'No audio stun for a long time!' in FreeSWITCH logs).\n",
+                    tech_pvt->sessionId,
+                    tech_pvt->dbg_read_cbs,
+                    tech_pvt->dbg_write_cbs);
+
+            /* Reset window counters. */
+            tech_pvt->dbg_read_cbs    = 0;
+            tech_pvt->dbg_write_cbs   = 0;
+            tech_pvt->dbg_data_frames = 0;
+        }
+    }
+
     if (!streamer->isConnected()) {
         /* WebSocket not yet connected or already dropped.
          * Log once so callers can diagnose, then return collected buffers to

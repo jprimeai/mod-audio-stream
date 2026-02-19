@@ -73,6 +73,7 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
              * for bridged calls and any application that reads the channel. */
             if (tech_pvt->close_requested)
                 return SWITCH_FALSE;
+            tech_pvt->dbg_read_cbs++;
             return stream_frame(bug);
 
         case SWITCH_ABC_TYPE_WRITE:
@@ -85,6 +86,7 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
              * SMBF_NO_PAUSE ensures callbacks are not suppressed by CF_HOLD. */
             if (tech_pvt->close_requested)
                 return SWITCH_FALSE;
+            tech_pvt->dbg_write_cbs++;
             return stream_frame(bug);
 
         default:
