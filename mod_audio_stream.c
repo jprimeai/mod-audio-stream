@@ -286,7 +286,7 @@ SWITCH_STANDARD_API(stream_function)
         } else if (!strcasecmp(argv[1], "start")) {
             char  wsUri[MAX_WS_URI];
             int   sampling = 8000;
-            switch_media_bug_flag_t flags = SMBF_READ_STREAM;
+            switch_media_bug_flag_t flags = SMBF_READ_STREAM | SMBF_NO_PAUSE;
             char *metadata = argc > 5 ? argv[5] : NULL;
 
             if (metadata &&
