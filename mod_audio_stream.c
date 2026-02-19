@@ -50,7 +50,8 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
     switch_core_session_t *session =
         switch_core_media_bug_get_session(bug);
     private_t *tech_pvt = (private_t *)user_data;
-
+    switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session),
+        SWITCH_LOG_DEBUG, "Got SWITCH_ABC_TYPE: %d\n", type);
     switch (type) {
 
         case SWITCH_ABC_TYPE_INIT:
@@ -69,6 +70,8 @@ static switch_bool_t capture_callback(switch_media_bug_t *bug,
 
         case SWITCH_ABC_TYPE_READ:
         case SWITCH_ABC_TYPE_WRITE:
+            switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session),
+                SWITCH_LOG_DEBUG, "Got SWITCH_ABC_TYPE_WRITE\n");
             if (tech_pvt->close_requested)
                 return SWITCH_FALSE;
             return stream_frame(bug);        
